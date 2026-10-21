@@ -1,0 +1,13 @@
+[project]
+name = "submission-frontend"
+version = "0.1.0"
+description = "Interactive Manager Approval Dashboard for the Ambient Expense Agent on Agent Runtime"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "google-adk>=2.9.2",
+    "google-cloud-aiplatform[agent-engines]>=1.156.0",
+    "google-auth>=2.35.0",
+    "requests>=2.32.0",
+]

@@ -1,0 +1,15 @@
+name: 'shopping-assistant'
+acli_version: '1.8.0'
+agent_directory: 'app'
+region: 'us-central1'
+base_template: 'adk'
+language: 'python'
+framework: 'google-adk'
+create_params:
+  root_agent_name: 'shopping_assistant_workflow'
+  deployment_target: 'none'
+  session_type: 'in_memory'
+  cicd_runner: 'skip'
+  is_a2a: false
+  agent_gateway: false
+  agent_guidance_filename: 'GEMINI.md'

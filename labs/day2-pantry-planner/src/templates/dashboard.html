@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pantry Planner</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="progress-bar" id="progress-bar"></div>
+
+    <header>
+        <div>
+            <h1>Pantry Planner</h1>
+            <span class="subtitle">Track ingredients, reduce waste</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="error-banner" id="error-banner"></div>
+
+        <div class="summary-cards">
+            <div class="card">
+                <div class="label">Total Items</div>
+                <div class="value">{{ total_items }}</div>
+            </div>
+            <div class="card">
+                <div class="label">Categories</div>
+                <div class="value">{{ total_categories }}</div>
+            </div>
+            <div class="card {{ 'warning' if expiring_soon|length > 0 else '' }}">
+                <div class="label">Expiring Soon</div>
+                <div class="value">{{ expiring_soon|length }}</div>
+            </div>
+        </div>
+
+        {% if expiring_soon %}
+        <div class="expiring-alert">
+            <div class="alert-title">Items expiring within 3 days</div>
+            <ul>
+                {% for item in expiring_soon %}
+                <li>{{ item.name }} ({{ item.quantity | int if item.quantity == item.quantity | int else item.quantity }} {{ item.unit }}) — expires {{ item.expiry_date }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="main-grid">
+            <div>
+                <h2 class="section-title">Pantry Items</h2>
+                {% if items %}
+                <table class="pantry-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Quantity</th>
+                            <th>Category</th>
+                            <th>Expiry</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td><strong>{{ item.name }}</strong></td>
+                            <td>{{ item.quantity | int if item.quantity == item.quantity | int else item.quantity }} {{ item.unit }}</td>
+                            <td><span class="badge {{ item.category|lower|replace(' ', '-') }}">{{ item.category }}</span></td>
+                            <td>
+                                {% if item.expiry_date %}
+                                <span class="expiry-tag {{ item.expiry_status }}">
+                                    {% if item.expiry_status == 'expired' %}Expired{% elif item.expiry_status == 'soon' %}Expiring{% else %}{{ item.expiry_date }}{% endif %}
+                                </span>
+                                {% else %}
+                                <span class="expiry-tag none">No expiry</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-danger" onclick="removeItem('{{ item.id }}', this)">Remove</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="card empty-state">Your pantry is empty. Add some items to get started.</div>
+                {% endif %}
+            </div>
+
+            <div>
+                <h2 class="section-title">Add Item</h2>
+                <div class="add-form">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" placeholder="e.g. Chicken Breast" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="quantity">Quantity</label>
+                        <input type="number" id="quantity" step="0.1" min="0" placeholder="500" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="unit">Unit</label>
+                        <select id="unit">
+                            <option value="g">g</option>
+                            <option value="ml">ml</option>
+                            <option value="pcs">pcs</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category</label>
+                        <select id="category">
+                            <option value="Protein">Protein</option>
+                            <option value="Grains">Grains</option>
+                            <option value="Vegetables">Vegetables</option>
+                            <option value="Dairy">Dairy</option>
+                            <option value="Pantry Staples">Pantry Staples</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="expiry_date">Expiry Date (optional)</label>
+                        <input type="date" id="expiry_date">
+                    </div>
+                    <button class="btn btn-primary" onclick="addItem(this)">Add to Pantry</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pantry assistant wired to the ADK Pantry Agent via /api/chat/stream -->
+    <button class="chat-fab" id="chat-fab" onclick="toggleChat()"
+            aria-label="Open pantry assistant" aria-expanded="false" aria-controls="chat-panel">
+        <span class="chat-fab-icon" aria-hidden="true">&#128172;</span>
+        <span>Assistant</span>
+    </button>
+
+    <section class="chat-panel" id="chat-panel" role="dialog" aria-label="Pantry assistant" aria-hidden="true">
+        <header class="chat-header">
+            <div>
+                <div class="chat-title">Pantry Assistant</div>
+                <div class="chat-status" id="chat-status">Connected to ADK Pantry Agent</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(255,255,255,0.2); color: white;" onclick="resetChatSession()" title="Start a new chat session">New Chat</button>
+                <button class="chat-close" onclick="toggleChat()" aria-label="Close assistant">&times;</button>
+            </div>
+        </header>
+
+        <div class="chat-messages" id="chat-messages" aria-live="polite">
+            <div class="chat-message assistant" id="chat-welcome">
+                Hi! Ask me what you can cook with your current pantry, which items are expiring soon, or tell me to add/remove ingredients.
+            </div>
+        </div>
+
+        <form class="chat-input-row" id="chat-form" onsubmit="sendChat(event)">
+            <input type="text" id="chat-input" autocomplete="off"
+                   placeholder="What can I cook this week?" aria-label="Message">
+            <button type="submit" class="btn btn-primary chat-send" id="chat-send">Send</button>
+        </form>
+    </section>
+
+    <script>
+        let busy = false;
+
+        function showError(message) {
+            const banner = document.getElementById('error-banner');
+            banner.textContent = message;
+            banner.classList.add('active');
+        }
+
+        function clearError() {
+            document.getElementById('error-banner').classList.remove('active');
+        }
+
+        function actionButtons() {
+            return document.querySelectorAll('.container .btn');
+        }
+
+        function startLoading(button) {
+            busy = true;
+            clearError();
+            document.getElementById('progress-bar').classList.add('active');
+            actionButtons().forEach(btn => { btn.disabled = true; });
+            if (button) { button.classList.add('is-loading'); }
+        }
+
+        function stopLoading(button) {
+            busy = false;
+            document.getElementById('progress-bar').classList.remove('active');
+            actionButtons().forEach(btn => { btn.disabled = false; });
+            if (button) { button.classList.remove('is-loading'); }
+        }
+
+        async function runRequest(button, request) {
+            if (busy) { return; }
+            startLoading(button);
+            try {
+                const res = await request();
+                if (res.ok) {
+                    location.reload();
+                    return;
+                }
+                stopLoading(button);
+                showError(`Request failed (${res.status}). Please try again.`);
+            } catch (err) {
+                stopLoading(button);
+                showError(`Could not reach the server: ${err.message}`);
+            }
+        }
+
+        async function addItem(button) {
+            const data = {
+                name: document.getElementById('name').value,
+                quantity: parseFloat(document.getElementById('quantity').value),
+                unit: document.getElementById('unit').value,
+                category: document.getElementById('category').value,
+                expiry_date: document.getElementById('expiry_date').value || null,
+            };
+            if (!data.name || !data.quantity) { alert('Name and quantity are required.'); return; }
+            await runRequest(button, () => fetch('/api/pantry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            }));
+        }
+
+        async function removeItem(id, button) {
+            await runRequest(button, () => fetch(`/api/pantry/${id}`, { method: 'DELETE' }));
+        }
+
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) { stopLoading(null); }
+        });
+
+        /* ---------- Pantry assistant (ADK SSE streaming + localStorage session_id) ---------- */
+
+        const SESSION_STORAGE_KEY = 'pantry_session_id';
+        let chatBusy = false;
+        let historyLoaded = false;
+
+        function getStoredSessionId() {
+            return localStorage.getItem(SESSION_STORAGE_KEY);
+        }
+
+        function setStoredSessionId(sessionId) {
+            if (sessionId) {
+                localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+            } else {
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+            }
+        }
+
+        async function loadSessionHistory() {
+            const sessionId = getStoredSessionId();
+            if (!sessionId || historyLoaded) {
+                historyLoaded = true;
+                return;
+            }
+            historyLoaded = true;
+            try {
+                const res = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
+                if (res.status === 404) {
+                    setStoredSessionId(null);
+                    return;
+                }
+                if (!res.ok) { return; }
+                const data = await res.json();
+                const messages = data.messages || [];
+                if (messages.length > 0) {
+                    const list = document.getElementById('chat-messages');
+                    list.innerHTML = '';
+                    for (const msg of messages) {
+                        appendMessage(msg.text, msg.role === 'user' ? 'user' : 'assistant');
+                    }
+                }
+            } catch (_) {
+                // Keep default welcome message if history fetch fails
+            }
+        }
+
+        async function resetChatSession() {
+            if (chatBusy) { return; }
+            setStoredSessionId(null);
+            const list = document.getElementById('chat-messages');
+            list.innerHTML = '';
+            appendMessage(
+                'Started a new chat session. Ask me what you can cook or how to manage your pantry!',
+                'assistant'
+            );
+        }
+
+        function toggleChat() {
+            const panel = document.getElementById('chat-panel');
+            const fab = document.getElementById('chat-fab');
+            const open = panel.classList.toggle('open');
+            panel.setAttribute('aria-hidden', String(!open));
+            fab.setAttribute('aria-expanded', String(open));
+            if (open) {
+                loadSessionHistory();
+                document.getElementById('chat-input').focus();
+            }
+        }
+
+        function appendMessage(text, role) {
+            const list = document.getElementById('chat-messages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-message ${role}`;
+            bubble.textContent = text;
+            list.appendChild(bubble);
+            list.scrollTop = list.scrollHeight;
+            return bubble;
+        }
+
+        async function askAssistant(message, onChunk, onStatus) {
+            const res = await fetch('/api/chat/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: getStoredSessionId(),
+                }),
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullText = '';
+            let lastNonPartialText = '';
+            let mutatedPantry = false;
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) { break; }
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const rawLine of lines) {
+                    const line = rawLine.trim();
+                    if (!line.startsWith('data:')) { continue; }
+                    const jsonStr = line.slice(5).trim();
+                    if (!jsonStr) { continue; }
+                    let evt;
+                    try {
+                        evt = JSON.parse(jsonStr);
+                    } catch (_) {
+                        continue;
+                    }
+
+                    if (evt.session_id) {
+                        setStoredSessionId(evt.session_id);
+                    }
+                    if (evt.error) {
+                        throw new Error(evt.error);
+                    }
+                    if (evt.type === 'tool_call' && onStatus) {
+                        onStatus(`Running ${evt.tool}…`);
+                    } else if (evt.type === 'text' && evt.text) {
+                        if (evt.partial) {
+                            fullText += evt.text;
+                        } else {
+                            // Non-partial event carries the complete text for that model message
+                            if (!fullText) {
+                                fullText = evt.text;
+                            } else if (!fullText.endsWith(evt.text)) {
+                                fullText = evt.text;
+                            }
+                            lastNonPartialText = fullText;
+                        }
+                        onChunk(fullText);
+                    } else if (evt.type === 'done') {
+                        mutatedPantry = Boolean(evt.mutated_pantry);
+                    }
+                }
+            }
+
+            return { text: fullText || lastNonPartialText, mutatedPantry };
+        }
+
+        async function sendChat(event) {
+            event.preventDefault();
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text || chatBusy) { return; }
+
+            chatBusy = true;
+            input.value = '';
+            appendMessage(text, 'user');
+
+            const sendBtn = document.getElementById('chat-send');
+            sendBtn.disabled = true;
+            input.disabled = true;
+            const bubble = appendMessage('Thinking…', 'assistant typing');
+
+            try {
+                let receivedFirstChunk = false;
+                const result = await askAssistant(
+                    text,
+                    (streamedText) => {
+                        if (!receivedFirstChunk) {
+                            receivedFirstChunk = true;
+                            bubble.classList.remove('typing');
+                        }
+                        bubble.textContent = streamedText;
+                        const list = document.getElementById('chat-messages');
+                        list.scrollTop = list.scrollHeight;
+                    },
+                    (statusText) => {
+                        if (!receivedFirstChunk) {
+                            bubble.textContent = statusText;
+                        }
+                    }
+                );
+                bubble.classList.remove('typing');
+                if (!result.text) {
+                    bubble.textContent = '(No response from agent)';
+                }
+            } catch (err) {
+                bubble.classList.remove('typing');
+                bubble.classList.add('stub');
+                bubble.textContent = `Assistant error: ${err.message}`;
+            } finally {
+                chatBusy = false;
+                sendBtn.disabled = false;
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && document.getElementById('chat-panel').classList.contains('open')) {
+                toggleChat();
+            }
+        });
+    </script>
+</body>
+</html>

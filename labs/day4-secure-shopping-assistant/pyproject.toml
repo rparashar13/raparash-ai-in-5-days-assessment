@@ -1,0 +1,59 @@
+[project]
+name = "shopping-assistant"
+version = "0.1.0"
+description = "ADK 2.0 Shopping Assistant Agent with Secure TDD, Semgrep Pre-Commit Gates, and STRIDE Threat Modeling"
+authors = [
+    {name = "Kaggle Student", email = "student@example.com"},
+]
+dependencies = [
+    "google-adk[gcp,otel-gcp,bigquery-analytics]>=2.9.2,<3.0.0",
+    "opentelemetry-resourcedetector-gcp<=1.12.0a0",
+    "fastapi>=0.115.8,<1.0.0",
+    "uvicorn~=0.34.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "pre-commit>=4.0.0",
+    "pre-commit-hooks>=5.0.0",
+    # "semgrep>=1.90.0",  # Installed into isolated uv tool env and linked into .venv/bin/semgrep to avoid opentelemetry-sdk<1.38 pin conflict with google-adk>=2.9.2
+]
+requires-python = ">=3.11,<3.14"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+    "pre-commit>=4.0.0",
+    "pre-commit-hooks>=5.0.0",
+    "ruff>=0.4.6,<1.0.0",
+    "ty>=0.0.1a0",
+    "codespell>=2.2.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+lint = [
+    "ruff>=0.4.6,<1.0.0",
+    "ty>=0.0.1a0",
+    "codespell>=2.2.0,<3.0.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "C", "B", "UP", "RUF"]
+ignore = ["E501", "C901", "B006"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = "."
+asyncio_default_fixture_loop_scope = "session"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

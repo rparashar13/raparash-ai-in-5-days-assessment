@@ -1,0 +1,9 @@
+metrics_to_run:
+  - routing_correctness
+  - security_containment
+
+custom_metrics:
+  - name: routing_correctness
+    custom_function_file: routing_correctness.py
+  - name: security_containment
+    custom_function_file: security_containment.py
